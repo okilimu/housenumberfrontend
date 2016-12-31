@@ -250,6 +250,7 @@
 	"reduce output (for printing): 'hide..': identical housenumbers, if they are not important to look for; 'show..' don't hide columns": "Ausgabe reduzieren (für Ausdruck): 'ausblenden..': identische Hausnummern, wenn sie nicht zur Kontrolle gebraucht werden; 'zeigen..' keine Spalten ausblenden",
 	"display all pare housenumbers in only line, and impare housenumber in another line. Useful, if housenumbers are sorted in real in street": "darstellen aller geraden Hausnummern in einer Zeile und ungerade in einer anderen Zeile. Sinnvoll, wenn die Hausnummern so vor Ort straßenseitenweise vorkommen",
 	"don't show results for every street, just show a summary": "Keine Ergebnisse für jede Straße anzeigen, nur Summen",
-	"direct search": "direct search",
-	"distance calculation is running, please wait": "distance calculation is running, please wait"
+	"direct search": "direkte Suche",
+	"distance calculation is running, please wait": "Distanzberechnung läuft, bitte warten",
+	"no official geocoordinates available": "keine offiziellen Geokoordinaten verfügbar"
 }

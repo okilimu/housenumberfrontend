@@ -33,11 +33,14 @@ handle["/de/auswertung_auswahlort"] = evaluation.selectmunicipality;
 handle["/de/auswertung_auswahldetails"] = evaluation.selectevaluation;
 handle["/en/selectevaluation"] = evaluation.selectevaluation;
 handle["/en/showevaluation"] = evaluation.show;
+handle["/de/gpx_ausgeben"] = evaluation.exportgpx;
+handle["/en/exportgpx"] = evaluation.exportgpx;
+handle["/offizielle_koordinaten_ausgeben"] = evaluation.exportofficialgeocoordinates;
+handle["/en/exportofficialgeocoordinates"] = evaluation.exportofficialgeocoordinates;
+handle["/offizielle_koordinaten_abgleichen"] = evaluation.checkosmgeocoordinates;
+handle["/en/checkosmgeocoordinates"] = evaluation.checkosmgeocoordinates;
 
 /*
-					handle["/gpx_ausgeben"] = evaluation.gpx_ausgeben;
-					handle["/offizielle_koordinaten_ausgeben"] = evaluation.offizielle_koordinaten_ausgeben;
-					handle["/offizielle_koordinaten_abgleichen"] = evaluation.offizielle_koordinaten_abgleichen;
 
 					handle["/karte_auswahlort"] = grafikanforderung.ort_dialog;
 					handle["/theoreticalevaluation"] = grafikanforderung.theoevaluation;
@@ -222,7 +225,7 @@ app.use(function(request, response, next) {
 // end
 
 app.use(function(request, response, next) {
-	console.log(request.path + " Datei nicht gefunden");
+	console.log("REQUEST COULDN'T BE SOLVED, was " + request.path);
 	next();
 });
 

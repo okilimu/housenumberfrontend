@@ -1,0 +1,349 @@
+{% extends 'pagelayout.html' %}
+
+<!-- popup dialog concept see http://www.javascripttoolbox.com/lib/popup/example.php -->
+
+{% block headerscripts %}
+	<link rel="stylesheet" href="http://code.jquery.com/ui/1.11.2/themes/smoothness/jquery-ui.css">
+	<link rel="stylesheet" type="text/css" href="/housenumbers/css/tablesorter.css">
+	<link type="text/css" rel="stylesheet" href="/housenumbers/css/jquery-ui.css">
+	<link type="text/css" rel="stylesheet" href="/housenumbers/css/jquery-layout-default-latest.css">
+	<script type="text/javascript" src="/housenumbers/js/jquery-1.10.2.min.js"></script>
+	<script type="text/javascript" src="/housenumbers/js/jquery.tablesorter.min.js"></script>
+	<script type="text/javascript" src="/housenumbers/js/popup.js"></script>
+	<script type="text/javascript" src="/housenumbers/js/jquery-ui-1.11.2.min.js"></script>
+	<script type="text/javascript" src="/housenumbers/js/jquery.layout-latest.min.js"></script>
+	<script type="text/javascript" src="/housenumbers/js/jquery.tablesorter.min.js"></script>
+	<script type="text/javascript" src="http://openlayers.org/api/2.13/OpenLayers.js"></script>
+	<script type="text/javascript" src="http://openstreetmap.org/openlayers/OpenStreetMap.js"></script>
+
+   <style>
+       #map {
+           height: 600px;
+           width: 100%;
+       }
+		.borderall {
+			border-width:	1px;
+			border-style:	solid;
+			border-color:	black;
+			padding:			4px;
+			text-align:		justify;
+		}
+   </style>
+
+	<script type="text/javascript">
+	var lat = 51.07;
+	var lon = 9.382;
+	var zoom = 6;
+	var map;
+   var marker_osm;
+   var marker_list;
+   var layermarkers;
+
+   var sourceprojtext = "EPSG:900913";
+   var mapprojtext = "EPSG:4326";
+   
+   var global_dialog;
+	var destfield = "#gogo"; //+ resultfield;
+	var destfieldcontent = "#gogocontent";
+
+	
+	
+	
+	function getTextExtractor() {
+		  return (function() {
+				var patternLetters = /[öäüÖÄÜáàâéèêúùûóòôÁÀÂÉÈÊÚÙÛÓÒÔßÐðÍíÝýÞþÆæ]/g;
+				var patternNumeric = /^(\d+)(\.\d+)?(( *\d+(\/\d)*)?[A-Z]?)?$/;
+				var patternDateDmy = /^(?:\D+)?(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/;
+				var lookupLetters = {
+					"ä": "a", "ö": "o", "ü": "u",
+					"Ä": "A", "Ö": "O", "Ü": "U",
+					"á": "a", "à": "a", "â": "a",
+					"é": "e", "è": "e", "ê": "e",
+					"ú": "u", "ù": "u", "û": "u",
+					"ó": "o", "ò": "o", "ô": "o",
+					"Á": "A", "À": "A", "Â": "A",
+					"É": "E", "È": "E", "Ê": "E",
+					"Ú": "U", "Ù": "U", "Û": "U",
+					"Ó": "O", "Ò": "O", "Ô": "O",
+					"ß": "s",
+					"Ð": "DZZ", "ð": "dzz", 			// iceland chars
+					"Í": "IZZ", "í": "izz", 			// iceland chars
+					"Ý": "YZZ", "ý": "yzz", 			// iceland chars
+					"Þ": "ZZZ1", "þ": "zzz1",			// iceland chars
+					"Æ": "ZZZ2", "æ": "zzz2"			// iceland chars
+				};
+				var letterTranslator = function(match) { 
+					return lookupLetters[match] || match;
+				}
+	
+		    return function(node) {
+			 	var text = $.trim($(node).text());
+		      var date = text.match(patternDateDmy);
+		      var numeric = text.match(patternNumeric);
+		      if (date)
+		        return [date[3], date[2], date[1]].join("-");
+				if (numeric) {
+					var returnstring = "";
+					var firstpart = "" + numeric[1];
+					var prefixstring = "000000000000";
+					if((text.length >= 1) && (text.substring(0,1) == "-"))
+						prefixstring = "999999999999";
+					returnstring += prefixstring.substring(0,prefixstring.length - firstpart.length);
+					returnstring += firstpart;
+					if(numeric[2] != undefined)
+						returnstring += numeric[2];
+					return returnstring;
+				} else
+		        return text.replace(patternLetters, letterTranslator);
+		    }
+		  })();
+		}
+		var josmPopup = new Popup();
+
+		function openJOSMLinkAroundPoints(osmobjecttype, osmobjectid, osmlon, osmlat, listlon, listlat) {		//source: http://tools.geofabrik.de/osmi/
+			var left = (osmlon < listlon ? osmlon : listlon) - 0.001;
+			var right = (osmlon > listlon ? osmlon : listlon) + 0.001;
+			var bottom = (osmlat < listlat ? osmlat : listlat) - 0.001;
+			var top = (osmlat > listlat ? osmlat : listlat) + 0.001;
+			var f = "http://localhost:8111/load_and_zoom?left=" + left + "&bottom=" + bottom + "&right=" + right + "&top=" + top;
+			if(osmobjecttype && osmobjectid) {
+				f += "&select=" + osmobjecttype.substring(0,1) + osmobjectid;
+			}
+			for (i = 0; i < window.frames.length; i++) {
+			    window.frames[i].location = f;
+			} 
+			return f;
+		}
+
+		function EnhancedPopup(divobjectid, relatedobjectid, directiondivtorelatedobject, propertiesforpopup, lon, lat) {
+			var osmobjecttyp;
+			var osmobjectid;
+			if((lon == undefined) || (lat == undefined))
+				return;
+			if(relatedobjectid) {
+				var relatedobjectid_parts = relatedobjectid.split("_");
+				osmobjecttyp = relatedobjectid_parts[0];
+				osmobjectid = relatedobjectid_parts[1];
+			}
+			var area = (parseFloat(lon) - 0.001) + " " + (parseFloat(lat) - 0.001) + " " + (parseFloat(lon) + 0.001) + " " + (parseFloat(lat) + 0.001);
+			var relatedobject = document.getElementById(relatedobjectid);
+			if(lon == -1)
+				josmPopup.content = "-{{ __("sorry, no geocoordinate available") }}-";
+			else
+				josmPopup.content = "{{ __("Hno") }}: "+relatedobject.innerHTML + ": {{ __("edit in") }} <a target='josmiframe' href='"+openJOSM(area,osmobjecttyp, osmobjectid)+"'>Josm</a>";
+			josmPopup.reference = relatedobjectid;
+			josmPopup.style = {'border':'3px solid black','backgroundColor':'white'};
+			josmPopup.width = 300;
+			josmPopup.height = 150;
+			josmPopup.position = "above center";
+			josmPopup.show(divobjectid, relatedobjectid, directiondivtorelatedobject, propertiesforpopup);
+		}
+
+		
+	
+		function initMap() {
+			var format;
+
+			var resolutions = [ 156543.03390625, 78271.516953125, 39135.7584765625,
+					19567.87923828125, 9783.939619140625, 4891.9698095703125,
+					2445.9849047851562, 1222.9924523925781, 611.4962261962891,
+					305.74811309814453, 152.87405654907226, 76.43702827453613,
+					38.218514137268066, 19.109257068634033, 9.554628534317017,
+					4.777314267158508, 2.388657133579254, 1.194328566789627,
+					0.5971642833948135 ];
+
+			map = new OpenLayers.Map("map", {
+				controls : [ new OpenLayers.Control.Navigation(),
+						new OpenLayers.Control.PanZoomBar(),
+						new OpenLayers.Control.LayerSwitcher(),
+						new OpenLayers.Control.Attribution(),
+						//new OpenLayers.Control.KeyboardDefaults(), 
+						new OpenLayers.Control.Permalink()
+						],
+				maxExtent : new OpenLayers.Bounds(-20037508.34, -20037508.34, 20037508.34, 20037508.34),
+				maxResolution : 156543.0399,
+				numZoomLevels : 20,
+				units : 'm',
+				projection : new OpenLayers.Projection(sourceprojtext),
+				displayProjection : new OpenLayers.Projection(mapprojtext)
+			});
+
+			OpenLayers.Feature.Vector.style['default'].strokeWidth = 4;
+			OpenLayers.Feature.Vector.style['default'].cursor = 'pointer';
+
+			layerMapnik = new OpenLayers.Layer.OSM.Mapnik("Mapnik");
+			map.addLayer(layerMapnik);
+
+			map.addLayer(
+					// Programmcode von Black & White Layer von https://osm.wno-edv-service.de/boundaries/ übernommen
+					new OpenLayers.Layer.OSM('{{ __("black/white map") }}', 
+		                       ['https://a.tile.openstreetmap.org/${z}/${x}/${y}.png',
+		                        'https://b.tile.openstreetmap.org/${z}/${x}/${y}.png',
+		                        'https://c.tile.openstreetmap.org/${z}/${x}/${y}.png'],
+	            {
+						attribution:					'&copy; <a href="https://www.openstreetmap.org/" target="_blank">OpenStreetMap</a> contributors', 
+						displayInLayerSwitcher:		true,
+						displayProjection:			new OpenLayers.Projection("EPSG:4326"),
+						isBaseLayer:					true,
+						visibility:						true,
+						opacity:                 	1, 
+						numZoomLevels:					19, 
+						permalink:						"mono", 
+						eventListeners: {
+							tileloaded: function(evt) {
+								var ctx = evt.tile.getCanvasContext();
+								if (ctx) {
+									var imgd = ctx.getImageData(0, 0, evt.tile.size.w, evt.tile.size.h);
+									var pix = imgd.data;
+									for (var i = 0, n = pix.length; i < n; i += 4) {
+										pix[i] = pix[i + 1] = pix[i + 2] = (3 * pix[i] + 4 * pix[i + 1] + pix[i + 2]) / 8;
+									}
+									ctx.putImageData(imgd, 0, 0);
+									evt.tile.imgDiv.removeAttribute("crossorigin");
+									evt.tile.imgDiv.src = ctx.canvas.toDataURL();
+								}
+							}
+						}
+			}));
+
+			map.addLayer(new OpenLayers.Layer.OSM.Mapnik(
+					"{{ __("Mapnik, half transparency") }}",
+					{ maxZoomLevel: 19, numZoomLevels: 20, opacity: 0.5 }
+			));
+			
+			layerCycleMap = new OpenLayers.Layer.OSM.CycleMap("CycleMap");
+			map.addLayer(layerCycleMap);
+
+			map.addLayer(new OpenLayers.Layer.OSM(
+					"{{ __("without background") }}",
+					"grafikdarstellung/blank.gif",
+					{ maxZoomLevel: 19, numZoomLevels: 20 }
+			));
+
+		   layermarkers = new OpenLayers.Layer.Markers( "Koordinatenvergleich" );
+		   map.addLayer(layermarkers);
+
+			// next line take an existing permalink in url
+			if (!map.getCenter()) {
+				lonLat = new OpenLayers.LonLat(lon, lat).transform(
+						new OpenLayers.Projection(mapprojtext),
+						new OpenLayers.Projection(sourceprojtext));
+				map.setCenter(lonLat, zoom);
+			}
+
+		} // end of function initMap()
+		
+
+		function showPoints(htmlcallerobject, osmlon, osmlat, listlon, listlat) {
+			var size = new OpenLayers.Size(21,25);
+			var offset = new OpenLayers.Pixel(-(size.w/2), -size.h);
+			var iconosm = new OpenLayers.Icon('http://dev.openlayers.org/img/marker-gold.png', size, offset);			
+			var iconlist = new OpenLayers.Icon('http://dev.openlayers.org/img/marker-blue.png', size, offset);
+			
+			
+			var zoom = 17;
+			if(marker_osm)
+				layermarkers.removeMarker(marker_osm);
+			if(marker_list)
+				layermarkers.removeMarker(marker_list);
+			marker_osm = new OpenLayers.Marker(new OpenLayers.LonLat(osmlon, osmlat).transform(
+					new OpenLayers.Projection(mapprojtext),
+					new OpenLayers.Projection(sourceprojtext)),
+					iconosm);
+		    marker_list = new OpenLayers.Marker(new OpenLayers.LonLat(listlon, listlat).transform(
+					new OpenLayers.Projection(mapprojtext),
+					new OpenLayers.Projection(sourceprojtext)),
+					iconlist);
+			layermarkers.addMarker(marker_osm);
+			layermarkers.addMarker(marker_list);
+			var lon = (osmlon + listlon) / 2;
+			var lat = (osmlat + listlat) / 2
+			lonLat = new OpenLayers.LonLat(lon, lat).transform(
+					new OpenLayers.Projection(mapprojtext),
+					new OpenLayers.Projection(sourceprojtext));
+			map.setCenter(lonLat, zoom);
+			
+			if (! $( destfield ).dialog( "isOpen" )) {
+				$( destfield ).dialog("open");
+			}
+			
+			$( destfield ).dialog( "option", "position", { my: "right-100", at: "center", of: htmlcallerobject } );
+			$( destfield ).dialog( "option", "title", "{{ __("Map") }}: " + htmlcallerobject.name);
+		}
+	</script>
+{% endblock %}
+
+{% block title %}{{titel}}{% endblock %}
+
+{% block content %}
+	<p><a href='/housenumbers/showevaluation?job_ids={{ params.job_id }}'>{{__("back")}}</a></p>
+
+	<h4>{{__("Description")}}</h4>
+	<p>{{__("Here, you see the distance in meters between OSM housenumbers and their official geocoordinates.")}}<br />
+	{{__("Distances less than 10m are no problem, but please have a look at distances more than 30m or 50m.")}}<br />
+	{{__("A maximum of 5.000 housenumbers will be shown, sorted from farthest to least distance.")}}<br />
+	{{__("After klick on a map link, both housenumbers (OSM in yellow, officially in blue) will be the map. At long distances, you must zoom out manualy to see both.")}}<br />
+	{{__("The link to Josm lets you load the area including both geocoordinates, if they are not to far away from each other. Josm must already be running and must accept remote control.")}}<br />
+	</p>
+	<div class=" ui-dialog ui-widget ui-widget-content ui-corner-all ui-front ui-dialog-buttons ui-draggable ui-resizable"
+		 id="gogo" title="{{ __("Map") }}">
+		 <p id="gogocontent"></p>
+	</div>
+		
+	<table id='tablediff' name='tablediff' style='width:40%' class='tablesorter' border='all'>
+		<thead> 
+			<tr>
+			<th>{{ __("Street") }}</th>
+			<th>{{ __("Housenumber") }}</th>
+ 			<th>{{ __("Distance") }} [m]</th>
+			<th>{{ __("Links") }}</th>
+			</tr>
+		</thead>
+		<tbody>
+		{% for h in hausnummern %}
+			{% if h.liste_koordinate_lon %}
+				<tr>
+					<td>{{ h.strasse }}</td>
+					<td>{{ h.hausnummer }}</td>
+	 				<td>{{ h.diff }}</td>
+					<td><a id='object{{ h.osm_objektart}}{{ h.osm_id}}' name='{{ h.strasse }} {{ h.hausnummer }}' href='#' onclick='showPoints(this, {{ h.osm_koordinate_lon }}, {{ h.osm_koordinate_lat }}, {{ h.liste_koordinate_lon }}, {{ h.liste_koordinate_lat }});return false;'>{{ __("Map") }}</a>
+					<a href='#' onclick='openJOSMLinkAroundPoints("{{ h.osm_objektart}}", {{ h.osm_id}}, {{ h.osm_koordinate_lon }}, {{ h.osm_koordinate_lat }}, {{ h.liste_koordinate_lon }}, {{ h.liste_koordinate_lat }}); return false;'>{{ __("Josm") }}</a></td>
+				</tr>
+			{% endif %}
+		{% endfor %}
+		</tbody>
+	</table>
+
+	<script type="text/javascript">
+	var myTextExtraction = function(node)
+	{
+									// extract data from markup and return it"; 
+	var inhalt = node.childNodes[0].childNodes[0].innerHTML;
+	return inhalt;
+	}
+	$(document).ready(function()
+    {
+		$( destfield ).dialog({
+			autoOpen:		true,		//orig: false
+			resizable:		true,
+			width: 			1000,
+			height:			800,
+			maxWidth:		1200,
+			maxHeight:		1000,
+			position:		{ my: "right top+50", at: "right top+150", of: "#loadstatus"},
+			closeOnEscape:	true
+		});
+
+		$( destfield ).html('<div id="map" class="smallmap" style="position:relative; top:0px; left: 0px; z-index:2;"></div>');		//destfieldcontent 
+		$( destfield ).dialog("open");
+			
+		initMap();
+
+		
+
+		
+		$("#tablediff").tablesorter(  {textExtraction: getTextExtractor()}); 
+    });
+	</script>
+	<iframe id="josmiframe" name="josmiframe" style="display:none;"></iframe>
+{% endblock %}
